@@ -17,9 +17,9 @@ public class Product {
 public class Product {
     String name; double price; int qty;
     double amount() { return price * qty; }
-    String toBill() { ... }                     // 加：对账单
-    String toJson() { ... }                     // 又加：导出 JSON
-    boolean riskCheck() { ... }                 // 再加：风控校验
+    String toBill()    { return "商品 " + name + " x" + qty; }   // 加：对账单
+    String toJson()    { return "{\"name\":\"" + name + "\"}"; }  // 又加：导出 JSON
+    boolean riskCheck(){ return price < 100000; }                // 再加：风控校验
     // ……每来一个新操作，Product / Shipping / Coupon 三个类全都要改一遍
 }
 ```

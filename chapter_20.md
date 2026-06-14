@@ -8,7 +8,7 @@
 
 ```java
 // 调用方被迫知道集合内部是"数组 + 个数"
-MyArrayList list = ...;
+MyArrayList list = new MyArrayList();        // 内部用 Object[] data + int count 存数据
 for (int i = 0; i < list.getCount(); i++) {
     System.out.println(list.getData()[i]);   // 直接戳人家内部的 data 数组
 }

@@ -32,7 +32,7 @@ public class UserService {
         // 小白：用的时候我就 new 一个！
         AppConfigManager config = new AppConfigManager();
         String dbUrl = config.getConfig("db.url");
-        // ...
+        System.out.println("用 " + dbUrl + " 连接数据库");  // 用这个配置干活
     }
 }
 ```

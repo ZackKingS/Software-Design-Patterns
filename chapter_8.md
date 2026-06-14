@@ -8,11 +8,20 @@
 // 小白的"继承大法"，每一种组合建一个类
 public class Coffee { double cost() { return 10; } }
 
-public class CoffeeWithMilk extends Coffee { ... }              // 咖啡+奶
-public class CoffeeWithMilkAndSugar extends Coffee { ... }      // 咖啡+奶+糖
-public class CoffeeWithMilkAndCaramel extends Coffee { ... }    // 咖啡+奶+焦糖
-public class CoffeeWithMilkSugarCaramel extends Coffee { ... }  // 咖啡+奶+糖+焦糖
+public class CoffeeWithMilk extends Coffee {              // 咖啡+奶
+    double cost() { return super.cost() + 2; }
+}
+public class CoffeeWithMilkAndSugar extends Coffee {      // 咖啡+奶+糖
+    double cost() { return super.cost() + 2 + 1; }
+}
+public class CoffeeWithMilkAndCaramel extends Coffee {    // 咖啡+奶+焦糖
+    double cost() { return super.cost() + 2 + 3; }
+}
+public class CoffeeWithMilkSugarCaramel extends Coffee {  // 咖啡+奶+糖+焦糖
+    double cost() { return super.cost() + 2 + 1 + 3; }
+}
 // 奶、糖、焦糖、奶泡、肉桂…… 5 种配料的自由组合 = 2^5 = 32 个类！
+// 每加一种料，类的数量翻倍——这就是"类爆炸"
 ```
 
 **王哥**看着这一屏的类名，倒吸一口凉气：“小白，你这是要把全宇宙的咖啡组合都写成类啊？再加一种'香草糖浆'，你这类的数量直接翻倍！”

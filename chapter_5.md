@@ -6,10 +6,16 @@
 
 ```java
 public class Burger {
+    private final String bread, meat, sauce;
+    private final boolean cheese, bacon, lettuce, tomato;
+    private final int pickles;
+
     public Burger(String bread, String meat, boolean cheese,
                   boolean bacon, String sauce, int pickles,
                   boolean lettuce, boolean tomato) {
-        // ...
+        this.bread = bread; this.meat = meat; this.cheese = cheese;
+        this.bacon = bacon; this.sauce = sauce; this.pickles = pickles;
+        this.lettuce = lettuce; this.tomato = tomato;
     }
 }
 
