@@ -56,6 +56,7 @@
 - 第15章：填空题——**模板方法模式 (Template Method)**
 - 第16章：人有悲欢离合——**状态模式 (State)**
 - 第17章：击鼓传花——**责任链模式 (Chain of Responsibility)**
+- 第18章：收尾三式与终章——**迭代器、备忘录、中介者**（附录：访问者、解释器）
 
 ## Verification Plan
 
