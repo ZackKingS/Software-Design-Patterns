@@ -1,180 +1,159 @@
-# 第12章：诸葛亮的锦囊妙计——策略模式 (Strategy)
+# 第12章：个体与群体一视同仁——组合模式 (Composite)
 
-## 1. 小剧场：500 行的结算方法
+## 1. 小剧场：满屏的"它到底是文件还是文件夹？"
 
-周三，小白对着一个结算方法发愁。这个方法已经被历代程序员塞进了各种优惠逻辑，膨胀到了 500 行。
+周三，小白在做上次思考题里的文件管理器。要统计一个文件夹占用的总大小，他写出了这样的代码：
 
 ```java
-// 一坨没人敢动的"屎山"
-public class CheckoutService {
-    public double calculate(String userType, double price, boolean isHoliday) {
-        if ("member".equals(userType)) {
-            return price * 0.9;            // 会员 9 折
-        } else if ("svip".equals(userType)) {
-            return price * 0.8;            // 超级会员 8 折
-        } else if (isHoliday) {
-            return price - 50;            // 节假日满减
-        } else if ("newbie".equals(userType)) {
-            return price - 20;            // 新人立减
+// 小白的写法：到处判断"这是文件还是文件夹"
+public int calcSize(Object node) {
+    if (node instanceof File) {                 // 是文件
+        return ((File) node).getSize();
+    } else if (node instanceof Folder) {        // 是文件夹
+        int total = 0;
+        for (Object child : ((Folder) node).getChildren()) {
+            total += calcSize(child);           // 递归，里面又要 instanceof 一遍
         }
-        // …… 以后还有双十一、618、店铺券、平台券，继续往里塞 else if
-        return price;
+        return total;
     }
+    return 0;
 }
 ```
 
-**王哥**：“这就是你上次思考题里的'屎山'。每加一种优惠，你就往这个方法里塞一个 `else if`。这个方法会越来越长、越来越没人敢动，违背了**开闭原则**——每次都得改它。”
+**王哥**：“小白，这就是上次说的树形结构。你看你这段——每处理一个节点，都得先 `instanceof` 判断它'到底是文件还是文件夹'，然后分两套逻辑。不光 `calcSize` 这样，你的 `show()`、`delete()`、`count()` 每个方法都得重复这套判断。”
 
-**小白**：“可优惠规则就是这么多啊，不写 `if-else` 怎么区分？”
+**小白**：“是啊，烦死了。而且哪天再加一种节点类型，比如'快捷方式'，我得把所有方法里的 `if-else` 都补一遍。”
 
-**王哥**：“诸葛亮给赵云三个锦囊，告诉他'到了某地拆某个'。每个锦囊里装着一套**独立的应对策略**。赵云不需要把所有计谋都背在脑子里，他只需要在合适的时机，**拿出对应的锦囊**就行。”
-
-**小白**：“所以……把每种优惠算法，单独装进一个'锦囊'？”
-
-**王哥**：“对喽！把每个算法封装成一个独立的策略类，用的时候**像换装备一样切换**。这就是**策略模式（Strategy）**。”
+**王哥**：“问题的根子是——你**把'个体'（文件）和'群体'（文件夹）当成了两种东西**，于是处处要区分它们。换个思路：**如果让文件和文件夹对外长得**一模一样**——都实现同一个接口，调用方根本不需要区分它们呢**？这就是**组合模式（Composite）**。”
 
 ---
 
-## 2. 核心概念：把每个算法装进独立的"锦囊"
+## 2. 核心概念：让"叶子"和"容器"共用一个接口
 
-**王哥**：“策略模式三步走：定义一个策略接口，把每种算法实现成一个策略类，再让上下文'持有'一个策略、随时可替换。”
-
-### 1) 定义策略接口，每种优惠一个锦囊
+**王哥**：“组合模式的精髓就一句话——**让'单个对象'（叶子）和'对象的组合'（容器）实现同一个接口，对外表现一致**。容器内部装着一堆同类型的接口对象，处理时**递归**展开，调用方完全无感。”
 
 ```java
-// 策略接口：所有优惠算法的统一规范
-public interface DiscountStrategy {
-    double apply(double price);
+// 统一接口：无论是文件还是文件夹，都能"显示"和"算大小"
+public interface Node {
+    void show(String prefix);
+    int size();
 }
 
-// 锦囊一：会员 9 折
-public class MemberDiscount implements DiscountStrategy {
-    public double apply(double price) { return price * 0.9; }
+// 叶子节点：文件（没有子节点）
+public class File implements Node {
+    private String name;
+    private int size;
+    public File(String name, int size) { this.name = name; this.size = size; }
+
+    public void show(String prefix) { System.out.println(prefix + name); }
+    public int size() { return size; }
 }
 
-// 锦囊二：超级会员 8 折
-public class SvipDiscount implements DiscountStrategy {
-    public double apply(double price) { return price * 0.8; }
-}
+// 组合节点：文件夹，内部装着一堆 Node（可能是文件，也可能是子文件夹）
+public class Folder implements Node {
+    private String name;
+    private List<Node> children = new ArrayList<>();
+    public Folder(String name) { this.name = name; }
 
-// 锦囊三：节假日满减
-public class HolidayDiscount implements DiscountStrategy {
-    public double apply(double price) { return price - 50; }
-}
-```
+    public void add(Node node) { children.add(node); }   // 往里塞，不管塞的是文件还是文件夹
 
-### 2) 上下文持有策略，随时切换
-
-```java
-// 上下文：它不关心具体算法，只持有一个策略
-public class CheckoutService {
-    private DiscountStrategy strategy;
-
-    // 想用哪个锦囊，就塞哪个进来（还记得第1章的依赖注入吗）
-    public void setStrategy(DiscountStrategy strategy) {
-        this.strategy = strategy;
+    public void show(String prefix) {
+        System.out.println(prefix + name + "/");
+        for (Node child : children) {
+            child.show(prefix + "  ");   // 递归：子节点是文件还是文件夹，一视同仁
+        }
     }
-
-    public double calculate(double price) {
-        return strategy.apply(price); // 委托给当前策略，自己不写任何 if
+    public int size() {
+        int total = 0;
+        for (Node child : children) total += child.size();  // 递归求和
+        return total;
     }
 }
 ```
 
 ```java
-CheckoutService service = new CheckoutService();
-service.setStrategy(new SvipDiscount()); // 拆开"超级会员"锦囊
-System.out.println(service.calculate(100)); // 80.0
+Folder root = new Folder("根目录");
+root.add(new File("readme.txt", 10));
 
-service.setStrategy(new HolidayDiscount()); // 换成"节假日"锦囊
-System.out.println(service.calculate(100)); // 50.0
+Folder sub = new Folder("子目录");
+sub.add(new File("photo.jpg", 200));
+root.add(sub);                          // 文件夹里塞文件夹，自然嵌套
+
+root.show("");                          // 递归打印整棵树
+System.out.println(root.size());        // 210，自动递归求和，全程没有一个 instanceof
 ```
 
-**小白**（眼前一亮）：“`calculate` 方法里一个 `if` 都没有了！它只管调用当前策略。以后加'双十一优惠'，我只需**新增**一个 `Double11Discount` 类，结算方法一个字都不用改——这就是开闭原则！”
+**小白**（如释重负）：“太优雅了！我调用 `root.size()`，**完全不用关心里面到底是文件还是文件夹**，它自己会递归处理。`instanceof` 全没了！个体和群体被我用同一种方式对待了！”
 
 ```mermaid
 classDiagram
-    class DiscountStrategy {
+    class Node {
         <<interface>>
-        +apply(double) double
+        +show(String)
+        +size() int
     }
-    class MemberDiscount {
-        +apply(double) double
+    class File {
+        -name: String
+        -size: int
+        +show(String)
+        +size() int
     }
-    class SvipDiscount {
-        +apply(double) double
+    class Folder {
+        -name: String
+        -children: List~Node~
+        +add(Node)
+        +show(String)
+        +size() int
     }
-    class HolidayDiscount {
-        +apply(double) double
-    }
-    class CheckoutService {
-        -strategy: DiscountStrategy
-        +setStrategy(DiscountStrategy)
-        +calculate(double) double
-    }
-    DiscountStrategy <|.. MemberDiscount
-    DiscountStrategy <|.. SvipDiscount
-    DiscountStrategy <|.. HolidayDiscount
-    CheckoutService o-- DiscountStrategy : 持有可替换的策略
+    Node <|.. File
+    Node <|.. Folder
+    Folder o-- Node : 递归持有子节点
 ```
-
-### 3) 用 Map 干掉最后一个 if
-
-**小白**：“可是王哥，决定'用哪个策略'的地方，是不是还得有个 `if` 来选？”
-
-**王哥**：“好问题。最后这个'选择'的 `if`，可以用一个 `Map` 优雅地干掉：”
-
-```java
-// 把"类型→策略"的映射关系放进 Map，启动时注册一次
-private static final Map<String, DiscountStrategy> STRATEGIES = Map.of(
-    "member", new MemberDiscount(),
-    "svip",   new SvipDiscount(),
-    "holiday", new HolidayDiscount()
-);
-
-// 选策略不再用 if-else，直接查表
-DiscountStrategy strategy = STRATEGIES.get(userType);
-```
-
-**小白**：“漂亮！连选择的 `if-else` 都变成了一行查表，加优惠只需往 Map 里加一项。”
 
 ---
 
-## 3. 模式精讲：策略模式的本质
+## 3. 模式精讲：树形结构 + 统一对待
 
-**王哥**：“策略模式的本质，就是**把'变化的算法'从'稳定的流程'里抽离出来，封装成可替换的对象**。它和我们第1章学的两个原则一脉相承：
-- **开闭原则**：加算法靠新增类，不改老代码。
-- **依赖倒置**：上下文依赖'策略接口'这个抽象，不依赖具体算法。”
+**王哥**：“组合模式的两个关键词：**树形结构**和**统一对待**。只要你的数据天然是'部分-整体'的递归嵌套，并且你希望'对单个节点'和'对整棵子树'用同一套操作，就该想到它。”
 
-**小白**：“王哥，这跟前面学的工厂模式有点像啊，都是面向接口、有一堆实现类。”
+**小白**：“实战里哪些地方在用？”
 
-**王哥**：“结构像，但**关注点不同**：
-- **工厂模式**关注'**创建**'——帮你 new 出一个对象。
-- **策略模式**关注'**行为**'——帮你执行一段可替换的算法。
+**王哥**：“多了去了：
 
-工厂是'生孩子'的，策略是'干活'的。实战中俩经常配合：用工厂创建策略，再用策略执行。”
+- **文件系统**：文件 / 文件夹（刚写的）。
+- **GUI 控件树**：一个 `Button` 是叶子，一个 `Panel` 是容器，容器里还能放容器——安卓的 `View` / `ViewGroup`、前端的 DOM 树，全是组合模式。`panel.render()` 会递归渲染所有子控件。
+- **公司组织架构**：员工是叶子，部门是容器，算'某部门总人数'就是递归。
+- **菜单 / 多级分类**：一级菜单下挂二级、三级。”
 
-**王哥**：“JDK 里 `Comparator` 就是策略模式的活化石——你给 `Collections.sort()` 传不同的 `Comparator`，就是在传不同的'排序策略'。”
+**王哥**：“它和上一章桥接的区别很清楚——**桥接是把'两个维度'拆开（横向），组合是把'整体和部分'统一（纵向递归）**。一个治'相乘爆炸'，一个治'到处 instanceof'。”
+
+**王哥**：“一个小提醒：`add()`/`remove()` 这种'管理子节点'的方法，只有容器（Folder）才有意义，叶子（File）是没有的。要不要把它们也塞进统一接口 `Node`，是组合模式里一个经典的取舍——塞进去调用方更统一，但叶子得给个空实现或抛异常；不塞则更安全，但调用方有时又得判断类型。没有标准答案，看你更看重'透明'还是'安全'。”
 
 ---
 
 ## 4. 课后总结与吐槽
 
-小白把 500 行的结算屎山拆成了一个个清爽的策略类 + 一张 Map，新同事终于敢碰这块代码了。
+小白把文件管理器用组合模式重写，`size()`、`show()`、`count()` 里的 `instanceof` 判断全部消失，后来加"快捷方式"节点也只是多实现了一个 `Node`。
 
 **小白的笔记**：
-1. **策略模式**：把每种算法封装成独立的策略类，运行时**自由切换**。
-2. 专治'**一个方法里塞满 if-else 算法**'的屎山。
-3. 上下文**持有策略接口**，把具体执行委托出去，自己不写算法。
-4. 配合 **Map** 可以连'选择策略'的 if-else 都干掉。
+1. **组合模式**：让**叶子（个体）和容器（群体）实现同一接口**，对外表现一致，调用方无需区分。
+2. 容器内部递归持有子节点，操作时**递归**展开，干掉满屏的 `instanceof`。
+3. 适用：一切**树形 / 部分-整体**结构（文件系统、GUI 控件树、组织架构、多级菜单）。
+4. 取舍：管理子节点的方法要不要放进统一接口——"透明"还是"安全"，二选一。
 
-**王哥**：“策略是'一个对象换着法子干活'。但有一类问题是'**一个对象一变，要通知一大群对象**'——”
+> [!NOTE]
+> **动手试试**
+> 1. 给 `Node` 加一个 `count()` 方法：文件返回 1，文件夹返回"子孙文件的总数"。验证你只需在两个类里各写一个递归/返回，调用方一行 `instanceof` 都不用。
+> 2. 新增一个叶子类型 `Shortcut`（快捷方式，`size()` 固定返回 0），把它 `add` 进任意文件夹，确认整棵树的统计逻辑不受影响。
+> 3. **思考**：如果要支持"在某文件夹下按名字查找文件"，这个递归方法该写在 `Node` 接口里，还是写成一个外部的工具方法？结合上一章——这其实是给"组合"再叠加一个"访问操作"，留个印象，第23章访问者模式会专门聊这件事。
+
+**王哥**：“组合解决了'树怎么统一处理'。但树一大，节点一多，又冒出个新麻烦——**内存**。下一个模式专治这个——”
 
 > [!TIP]
 > **王哥的思考题**
-> “你订阅了一个公众号。它一发新文章，**所有订阅了它的粉丝**都应该收到推送。粉丝可能有几万个，而且随时有人关注、有人取关。难道公众号要把每个粉丝的地址都硬编码在自己代码里，发文章时挨个手动通知？粉丝一变就改公众号代码？有没有办法让'发布者'和'订阅者'松耦合——发布者只管'我更新了'，自动就能通知到所有订阅者？”
+> “你在做一个文字编辑器，要渲染一篇 10 万字的文档。如果你给每一个字符都 `new` 一个对象，里面存着这个字、字体、字号……10 万个对象，内存一下就吃满了。可仔细想想，这 10 万个字符里，光是字母 'a' 可能就出现了几千次，它们的'字形'其实**完全一样**。有没有办法让这些**长得一样的对象共享同一份**，而不是傻乎乎地造几千个一模一样的 'a'？”
 
-（小白想起了第2章那个 B 站 UP 主的例子，感觉似曾相识……）
+（小白看着编辑器里那一大段重复的文字，若有所思……）
 
 ---
-*下一章，观察者模式将正式登场，揭秘"发布-订阅"的奥秘。*
+*下一章，享元模式将教小白如何"共享对象、节省内存"。*

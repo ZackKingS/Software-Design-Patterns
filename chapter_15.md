@@ -1,166 +1,161 @@
-# 第15章：填空题——模板方法模式 (Template Method)
+# 第15章：微信公众号的推送——观察者模式 (Observer)
 
-## 1. 小剧场：复制粘贴出来的流程
+## 1. 小剧场：硬编码的通知地狱
 
-周一，小白在做数据导出功能。他要导出 Excel 和 CSV 两种格式，于是写了两个方法。
+周四，小白在做一个'订单状态变更通知'功能。订单一旦发货，要同时干好几件事：给用户发短信、给用户发 App 推送、更新积分、通知数据分析系统。
 
 ```java
-// 导出 Excel
-public class ExcelExporter {
-    public void export() {
-        System.out.println("1. 连接数据库");      // 重复
-        System.out.println("2. 查询数据");        // 重复
-        System.out.println("3. 写成 Excel 格式");  // 不同
-        System.out.println("4. 上传到服务器");     // 重复
-        System.out.println("5. 关闭连接");        // 重复
-    }
-}
-
-// 导出 CSV —— 跟上面几乎一模一样，只有第3步不同
-public class CsvExporter {
-    public void export() {
-        System.out.println("1. 连接数据库");      // 又抄了一遍
-        System.out.println("2. 查询数据");        // 又抄了一遍
-        System.out.println("3. 写成 CSV 格式");    // 不同
-        System.out.println("4. 上传到服务器");     // 又抄了一遍
-        System.out.println("5. 关闭连接");        // 又抄了一遍
+// 小白把所有通知逻辑硬编码进了订单类
+public class Order {
+    public void ship() {
+        System.out.println("订单已发货");
+        // 发货后要通知一大堆人，全写死在这里
+        new SmsService().send("您的订单已发货");
+        new PushService().push("订单已发货");
+        new PointService().addPoints();
+        new AnalyticsService().record("订单发货事件");
+        // 哪天产品说"再加个发邮件"，我又得回来改 Order
     }
 }
 ```
 
-**王哥**：“小白，这就是上次思考题里的'泡茶泡咖啡'。你看这两个 `export`，5 步里有 4 步**一模一样**，只有第 3 步不同。你却把整套流程抄了两遍。哪天'上传到服务器'这步逻辑要改，你得改几个地方？”
+**王哥**：“小白，这就是你上次思考题里的'公众号硬编码粉丝'。你的 `Order` 类本来只该管订单，结果现在它认识了短信、推送、积分、分析**四个八竿子打不着的系统**，而且耦合得死死的。产品每加一个通知，你就得改 `Order`。”
 
-**小白**：“两个……要是有 PDF、XML 导出，那就是四个、五个。改一处忘一处，准出 bug。”
+**小白**：“是啊，`Order` 越来越臃肿。可发货后就是要通知这么多系统啊。”
 
-**王哥**：“问题在于，你把'**固定的流程骨架**'和'**变化的那一步**'混在一起，导致骨架被反复复制。正确的做法是——**把骨架固定在一个地方，只把变化的那几步留成'空格'让子类去填**。这就是**模板方法模式（Template Method）**。”
+**王哥**：“你订阅公众号是怎么回事？公众号知道你是谁、你手机号多少吗？”
+
+**小白**：“不知道，我就是点了个'关注'。它一发文章，我自动就收到了。”
+
+**王哥**：“关键就在这——**公众号根本不认识具体的粉丝，它只维护一个'订阅者名单'。一有更新，就遍历名单挨个通知**。粉丝关注/取关，只是在名单上加一行/删一行，公众号代码纹丝不动。这就是**观察者模式（Observer）**，又叫发布-订阅模式。”
 
 ---
 
-## 2. 核心概念：父类定骨架，子类填空格
+## 2. 核心概念：发布者维护一份"订阅名单"
 
-**王哥**：“模板方法模式的做法：在**父类**里定义一个'模板方法'，它规定好整个流程的**步骤和顺序**（骨架）。其中**不变的步骤**直接写好，**变化的步骤**定义成抽象方法，留给**子类**去实现。”
+**王哥**：“观察者模式有两个角色：
+- **主题（Subject / 被观察者）**：就是那个'公众号'，它维护订阅者列表，有事就群发通知。
+- **观察者（Observer / 订阅者）**：就是'粉丝'，它实现一个统一的'收到通知后该干啥'的方法。”
+
+### 1) 定义观察者接口
 
 ```java
-// 抽象父类：定义流程骨架
-public abstract class DataExporter {
+// 观察者接口：所有"想被通知的人"都实现它
+public interface OrderObserver {
+    void onShipped(String orderId);
+}
 
-    // 模板方法：规定死了流程的顺序，用 final 防止子类篡改骨架
-    public final void export() {
-        connect();        // 固定步骤
-        queryData();      // 固定步骤
-        writeData();      // 变化步骤 —— 留给子类填的"空格"
-        upload();         // 固定步骤
-        close();          // 固定步骤
+// 各个具体观察者，各干各的事，互不知道对方存在
+public class SmsObserver implements OrderObserver {
+    public void onShipped(String orderId) {
+        System.out.println("[短信] 订单" + orderId + "已发货");
     }
+}
+public class PointObserver implements OrderObserver {
+    public void onShipped(String orderId) {
+        System.out.println("[积分] 为订单" + orderId + "增加积分");
+    }
+}
+```
 
-    // 固定步骤：父类统一实现，子类不用管
-    private void connect() { System.out.println("1. 连接数据库"); }
-    private void queryData() { System.out.println("2. 查询数据"); }
-    private void upload() { System.out.println("4. 上传到服务器"); }
-    private void close() { System.out.println("5. 关闭连接"); }
+### 2) 主题维护名单 + 群发通知
 
-    // 变化步骤：定义成抽象方法，强制子类去填
-    protected abstract void writeData();
+```java
+public class Order {
+    private String orderId;
+    // 订阅者名单：Order 只认识"观察者接口"，不认识具体是谁
+    private List<OrderObserver> observers = new ArrayList<>();
+
+    // 关注 / 取关，只是在名单上增删
+    public void subscribe(OrderObserver o) { observers.add(o); }
+    public void unsubscribe(OrderObserver o) { observers.remove(o); }
+
+    public void ship() {
+        System.out.println("订单" + orderId + "已发货");
+        // 群发：遍历名单，挨个通知，不关心他们具体是谁
+        for (OrderObserver o : observers) {
+            o.onShipped(orderId);
+        }
+    }
 }
 ```
 
 ```java
-// 子类只需填"写数据"这一个空格
-public class ExcelExporter extends DataExporter {
-    protected void writeData() { System.out.println("3. 写成 Excel 格式"); }
-}
-
-public class CsvExporter extends DataExporter {
-    protected void writeData() { System.out.println("3. 写成 CSV 格式"); }
-}
+Order order = new Order("NO.1001");
+order.subscribe(new SmsObserver());   // 短信来订阅
+order.subscribe(new PointObserver()); // 积分来订阅
+order.ship();
+// 输出：订单已发货 → 短信通知 → 积分通知
 ```
 
-```java
-DataExporter exporter = new ExcelExporter();
-exporter.export();
-// 自动按 1→2→3(Excel)→4→5 完整流程执行
-```
-
-**小白**（如释重负）：“太清爽了！连接、查询、上传、关闭这些重复步骤，现在只在父类写**一遍**。子类只需填'写成什么格式'这一个空格。以后要改'上传'逻辑，我只改父类一处，所有子类全部生效！”
+**小白**（豁然开朗）：“`Order` 现在彻底解脱了！它根本不知道短信、积分这些系统的存在，只管对着'名单'喊一声'我发货了'。产品要加'发邮件'，我只需写个 `EmailObserver` 然后 `subscribe` 一下，`Order` 一个字都不用改！”
 
 ```mermaid
 classDiagram
-    class DataExporter {
-        <<abstract>>
-        +export() final
-        -connect()
-        -queryData()
-        -upload()
-        -close()
-        #writeData()* abstract
+    class Order {
+        -observers: List~OrderObserver~
+        +subscribe(OrderObserver)
+        +unsubscribe(OrderObserver)
+        +ship()
     }
-    class ExcelExporter {
-        #writeData()
+    class OrderObserver {
+        <<interface>>
+        +onShipped(String)
     }
-    class CsvExporter {
-        #writeData()
+    class SmsObserver {
+        +onShipped(String)
     }
-    DataExporter <|-- ExcelExporter
-    DataExporter <|-- CsvExporter
+    class PointObserver {
+        +onShipped(String)
+    }
+    OrderObserver <|.. SmsObserver
+    OrderObserver <|.. PointObserver
+    Order o-- OrderObserver : 维护订阅名单，群发通知
 ```
 
 ---
 
-## 3. 模式精讲：钩子方法与"好莱坞原则"
+## 3. 模式精讲：观察者的要点与坑
 
-**王哥**：“模板方法还有一个进阶技巧——**钩子方法（Hook）**。它是父类里一个有默认实现的方法（通常返回布尔值），子类可以选择性地覆盖它，来'微调'流程要不要执行某步。”
+**王哥**：“观察者模式的精髓，是把'**一对多的通知关系**'解耦——发布者和订阅者之间，只通过一个接口打交道。它完美体现了**开闭原则**（加订阅者不改发布者）和**依赖倒置**（发布者依赖观察者接口，不依赖具体实现）。”
 
-```java
-public abstract class DataExporter {
-    public final void export() {
-        connect();
-        queryData();
-        writeData();
-        if (needUpload()) {  // 钩子：要不要上传，子类说了算
-            upload();
-        }
-        close();
-    }
-    // 钩子方法：默认要上传，子类可覆盖
-    protected boolean needUpload() { return true; }
-}
+**王哥**：“但有几个坑你得知道：
 
-// 某个子类：导出后不上传，存本地就行
-public class LocalCsvExporter extends DataExporter {
-    protected void writeData() { System.out.println("写 CSV"); }
-    protected boolean needUpload() { return false; } // 覆盖钩子，跳过上传
-}
-```
+**1. 通知顺序不要依赖**。别假设 A 一定比 B 先收到通知，否则就埋下隐患。
 
-**王哥**：“模板方法体现了一个著名的设计思想——'**好莱坞原则**'：'**别打电话给我们，我们会打给你**'（Don't call us, we'll call you）。也就是说，**父类控制整个流程，在需要的时候反过来调用子类填的方法**。控制权在父类手里，子类只是被回调。”
+**2. 小心'同步阻塞'**。如果某个观察者处理得很慢（比如发短信卡了 3 秒），会拖累整个发货流程。实战中常用**异步**（消息队列）来解耦，这就是 **Kafka、RabbitMQ 这些消息中间件的思想源头**。
 
-**小白**：“这跟策略模式有点像啊，都是'有一部分逻辑是变化的'。”
+**3. 防止内存泄漏**。观察者用完不取消订阅，主题会一直持有它的引用，导致它无法被回收。”
 
-**王哥**：“区别很关键：
-- **模板方法**用**继承**——父类是骨架，子类填空。变化的步骤是'流程的一部分'。
-- **策略模式**用**组合**——上下文持有一个完整的、可替换的算法对象。变化的是'整个算法'。
+**小白**：“原来 MQ、事件总线、各种 `addListener`、Spring 的 `@EventListener`，底层都是观察者模式啊！”
 
-模板方法是'填空题'，策略是'选择题'。Spring 的 `JdbcTemplate`、各种框架的 `AbstractXxx` 基类、Java 的 `AbstractList`，全是模板方法的典范。”
+**王哥**：“没错。GUI 里的按钮点击监听、Vue/React 的响应式更新，全是这个套路。它是整个软件世界里**应用最广泛**的模式之一。”
 
 ---
 
 ## 4. 课后总结与吐槽
 
-小白把导出功能用模板方法重构，重复的流程代码消失了，后来加的 PDF、XML 导出都只写了一个 `writeData` 方法。
+小白把订单通知改成观察者模式，`Order` 类瘦身一大半，后续陆续加的邮件、企业微信通知都没再动过订单代码。
 
 **小白的笔记**：
-1. **模板方法模式**：父类用 `final` 模板方法**固定流程骨架**，把变化的步骤留成**抽象方法**给子类填。
-2. **钩子方法**：父类提供默认实现，子类可选择性覆盖，微调流程。
-3. 体现'**好莱坞原则**'：父类控制流程，反过来回调子类。
-4. 与策略的区别：模板方法靠**继承填空**，策略靠**组合换算法**。
+1. **观察者模式**：发布者维护一份**订阅者名单**，状态一变就遍历名单群发通知。
+2. 发布者只认识**观察者接口**，与具体订阅者彻底解耦。
+3. 加订阅者只需新增 Observer + `subscribe`，发布者代码不动。
+4. 注意坑：通知顺序、同步阻塞（可用异步/MQ）、内存泄漏（记得取消订阅）。
 
-**王哥**：“模板方法是'流程固定，步骤变化'。但还有一种变化更刁钻——'**对象的行为，随着它自己内部状态的改变而彻底改变**'——”
+> [!NOTE]
+> **动手试试**
+> 1. 给公众号再加一个"**数据统计**"观察者（文章发布时记录一条埋点日志），验证你不需要改动 `Order`/发布者的任何代码。
+> 2. 实现 `unsubscribe`（取消订阅），并写一个小例子：粉丝 A 收到一篇推送后取关，下一篇就不该再收到。
+> 3. **进阶**：把"群发通知"改成**异步**——发布者把通知任务丢进线程池，不再同步等待每个观察者执行完。想想这解决了什么问题、又带来了什么新问题（比如通知顺序、异常处理）？
+
+**王哥**：“观察者解决了'通知'。再给你看一类问题——'**把一个请求/操作本身，变成一个可以传递、排队、撤销的对象**'——”
 
 > [!TIP]
 > **王哥的思考题**
-> “一个订单有很多状态：待付款、待发货、待收货、已完成、已取消。同一个'取消'操作，在'待付款'时可以直接取消，在'待发货'时要先退款再取消，在'已完成'时则根本不允许取消。如果你用 `if (status == 待付款) {...} else if (status == 待发货) {...}` 来写每一个操作，那每个方法里都得塞一大坨状态判断，状态一多就乱成一锅粥。有没有办法让'状态'自己决定'在这个状态下该怎么做'，干掉这些满天飞的状态 if-else？”
+> “你家的智能遥控器上有一排按钮，你想给每个按钮自由绑定功能：1 号键开灯、2 号键开空调、3 号键开窗帘。而且你还想要一个'撤销'键，能把上一步操作反着执行回去。如果把'开灯'这个动作直接写死在按钮的点击事件里，那按钮和电灯就绑死了，也没法撤销。有没有办法把'开灯'这个**请求本身**封装成一个对象，让按钮和电灯彻底解耦，甚至能存进队列、支持撤销？”
 
-（小白看着订单系统里那密密麻麻的 `if (status == ...)`，头皮发麻……）
+（小白看着手里那个按键功能写死、还总按错的老遥控器，来了兴趣……）
 
 ---
-*下一章，状态模式将教小白如何让对象"随状态切换行为"。*
+*下一章，命令模式将教小白如何把"请求"变成一个可自由摆布的对象。*
